@@ -1,0 +1,10 @@
+# IDE and editor files
+.vscode/
+*.swp
+
+# Environment files with credentials
+.env.local
+.env.development
+.env.production
+*.env.local
+*/.env.local
