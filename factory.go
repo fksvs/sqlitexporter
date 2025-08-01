@@ -11,7 +11,7 @@ import (
 
 func NewFactory() exporter.Factory {
 	return xexporter.NewFactory(
-		component.MustNewType("sqlite"),
+		component.MustNewType("sqlitexporter"),
 		createDefaultConfig,
 		xexporter.WithLogs(createLogsExporter, component.StabilityLevelDevelopment))
 }

@@ -8,7 +8,7 @@ import (
 )
 
 type Config struct {
-	DatabaseFilename string `mapstruct:"database_filename"`
+	DatabaseFilename string `mapstructure:"database_filename"`
 	LogsTableName    string `mapstructure:"logs_table_name"`
 }
 

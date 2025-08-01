@@ -3,6 +3,7 @@ package sqlitexporter
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
@@ -25,8 +26,8 @@ const (
 			TraceID TEXT,
 			SpanID TEXT,
 			EventName TEXT,
-			ResourceAttrs BLOB,
-			LogAttrs BLOB
+			ResourceAttrs TEXT,
+			LogAttrs TEXT
 		);
 	`
 
@@ -44,7 +45,7 @@ const (
 			EventName,
 			ResourceAttrs,
 			LogAttrs
-		) VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 	`
 )
 
@@ -87,7 +88,8 @@ func (e *logsExporter) Shutdown(_ context.Context) error {
 }
 
 func (e *logsExporter) pushLogData(ctx context.Context, record plog.Logs) error {
-	stmt, err := e.client.PrepareContext(ctx, InsertLogsTableSQL)
+	sql := fmt.Sprintf(InsertLogsTableSQL, e.cfg.LogsTableName)
+	stmt, err := e.client.PrepareContext(ctx, sql)
 	if err != nil {
 		return err
 	}
@@ -96,7 +98,10 @@ func (e *logsExporter) pushLogData(ctx context.Context, record plog.Logs) error 
 	for i := 0; i < record.ResourceLogs().Len(); i++ {
 		resourceLogs := record.ResourceLogs().At(i)
 		resourceSchemaURL := resourceLogs.SchemaUrl()
-		resourceAttrs := attributesToMap(resourceLogs.Resource().Attributes())
+		resourceAttrs, err := json.Marshal(attributesToMap(resourceLogs.Resource().Attributes()))
+		if err != nil {
+			return nil
+		}
 
 		for j := 0; j < resourceLogs.ScopeLogs().Len(); j++ {
 			scopeLogs := resourceLogs.ScopeLogs().At(j)
@@ -112,9 +117,12 @@ func (e *logsExporter) pushLogData(ctx context.Context, record plog.Logs) error 
 				traceID := logRecord.TraceID().String()
 				spanID := logRecord.SpanID().String()
 				eventName := logRecord.EventName()
-				logAttrs := attributesToMap(logRecord.Attributes())
+				logAttrs, err := json.Marshal(attributesToMap(logRecord.Attributes()))
+				if err != nil {
+					return nil
+				}
 
-				_, err := stmt.ExecContext(ctx,
+				_, err = stmt.ExecContext(ctx,
 					resourceSchemaURL,
 					scopeSchemaURL,
 					observedTimestamp,
