@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
@@ -86,6 +87,54 @@ func (e *logsExporter) Shutdown(_ context.Context) error {
 }
 
 func (e *logsExporter) pushLogData(ctx context.Context, record plog.Logs) error {
+	stmt, err := e.client.PrepareContext(ctx, InsertLogsTableSQL)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for i := 0; i < record.ResourceLogs().Len(); i++ {
+		resourceLogs := record.ResourceLogs().At(i)
+		resourceSchemaURL := resourceLogs.SchemaUrl()
+		resourceAttrs := attributesToMap(resourceLogs.Resource().Attributes())
+
+		for j := 0; j < resourceLogs.ScopeLogs().Len(); j++ {
+			scopeLogs := resourceLogs.ScopeLogs().At(j)
+			scopeSchemaURL := scopeLogs.SchemaUrl()
+
+			for k := 0; k < scopeLogs.LogRecords().Len(); k++ {
+				logRecord := scopeLogs.LogRecords().At(k)
+				observedTimestamp := logRecord.ObservedTimestamp().String()
+				timestamp := logRecord.Timestamp().String()
+				severityNumber := logRecord.SeverityNumber()
+				severityText := logRecord.SeverityText()
+				body := logRecord.Body().AsString()
+				traceID := logRecord.TraceID().String()
+				spanID := logRecord.SpanID().String()
+				eventName := logRecord.EventName()
+				logAttrs := attributesToMap(logRecord.Attributes())
+
+				_, err := stmt.ExecContext(ctx,
+					resourceSchemaURL,
+					scopeSchemaURL,
+					observedTimestamp,
+					timestamp,
+					severityNumber,
+					severityText,
+					body,
+					traceID,
+					spanID,
+					eventName,
+					resourceAttrs,
+					logAttrs,
+				)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -98,4 +147,26 @@ func CreateLogsTable(ctx context.Context, cfg *Config, client *sql.DB) error {
 	}
 
 	return nil
+}
+
+func attributesToMap(attributes pcommon.Map) map[string]interface{} {
+	result := make(map[string]interface{}, attributes.Len())
+	attributes.Range(func(k string, v pcommon.Value) bool {
+		switch v.Type() {
+		case pcommon.ValueTypeStr:
+			result[k] = v.Str()
+		case pcommon.ValueTypeInt:
+			result[k] = v.Int()
+		case pcommon.ValueTypeDouble:
+			result[k] = v.Double()
+		case pcommon.ValueTypeBool:
+			result[k] = v.Bool()
+		case pcommon.ValueTypeBytes:
+			result[k] = v.Bytes().AsRaw()
+		default:
+			result[k] = v.AsString()
+		}
+		return true
+	})
+	return result
 }
