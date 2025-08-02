@@ -9,8 +9,6 @@ import (
 func TestExporterLogs(t *testing.T) {}
 
 func TestCreateLogsTable(t *testing.T) {
-	// check database for the table
-
 	cfg := Config{
 		DatabaseFilename: "./testdata/test_database.db",
 		LogsTableName:    "logs",
